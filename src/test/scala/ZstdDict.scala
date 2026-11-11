@@ -482,6 +482,30 @@ class ZstdDictSpec extends AnyFlatSpec {
       ddict.close()
     }
 
+    it should s"keep every fast dict in use while ZstdInputStream refers to multiple dicts with legacy $legacy" in {
+      val ddict = new ZstdDictDecompress(dict)
+      val ddict2 = new ZstdDictDecompress(dict2)
+      val zis = new ZstdInputStreamNoFinalizer(new ByteArrayInputStream(Zstd.compressUsingDict(input, dict, 1)))
+      zis.setRefMultipleDDicts(true)
+      zis.setDict(ddict2)
+      zis.setDict(ddict)
+      // in multi-dict mode the native context refers to both dictionaries
+      intercept[IllegalStateException] {
+        ddict2.close()
+      }
+      intercept[IllegalStateException] {
+        ddict.close()
+      }
+      // leaving multi-dict mode releases all but the last loaded dictionary
+      zis.setRefMultipleDDicts(false)
+      ddict2.close()
+      intercept[IllegalStateException] {
+        ddict.close()
+      }
+      zis.close()
+      ddict.close()
+    }
+
     it should s"not free a fast dict while ZstdOutputStream uses it with legacy $legacy" in {
       val cdict = new ZstdDictCompress(dict, 0, dict.length, 1)
       val cdict2 = new ZstdDictCompress(dict2, 0, dict2.length, 1)
